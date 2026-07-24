@@ -33,7 +33,7 @@ final class CollectorScript
 if (window.__pimcoreMcpClientErrors) { return; }
 window.__pimcoreMcpClientErrors = true;
 
-var MAX_QUEUE = 100, MAX_STR = 4000, FLUSH_MS = 2000;
+var MAX_QUEUE = 100, MAX_STR = 4000, FLUSH_MS = 2000, MAX_BEACON_BYTES = 50000;
 var queue = [], timer = null;
 var origError = window.console && console.error ? console.error.bind(console) : function(){};
 var origWarn = window.console && console.warn ? console.warn.bind(console) : function(){};
@@ -52,20 +52,43 @@ function push(rec){
 
 function schedule(){ if (timer == null) { timer = setTimeout(flush, FLUSH_MS); } }
 
-function flush(){
-    timer = null;
-    if (!queue.length) { return; }
-    var batch = queue.splice(0, queue.length);
+// POST one batch. Returns true only if the browser actually accepted it.
+// sendBeacon returns false when it declines (payload over its ~64KB cap, or
+// disabled) — we must honour that and fall back to fetch, otherwise reports
+// are dropped silently.
+function send(batch){
+    if (!batch.length) { return true; }
     var body = JSON.stringify({ reports: batch });
     try {
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(__ENDPOINT__, new Blob([body], { type: 'application/json' }));
-            return;
+        if (navigator.sendBeacon && navigator.sendBeacon(__ENDPOINT__, new Blob([body], { type: 'application/json' }))) {
+            return true;
         }
     } catch (e) {}
     try {
-        fetch(__ENDPOINT__, { method: 'POST', body: body, keepalive: true, headers: { 'Content-Type': 'application/json' } });
+        fetch(__ENDPOINT__, { method: 'POST', body: body, keepalive: true, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } });
+        return true;
     } catch (e) {}
+    return false;
+}
+
+function flush(){
+    timer = null;
+    if (!queue.length) { return; }
+    // Pull a size-bounded chunk so a burst of errors never exceeds the beacon/
+    // keepalive limit (which would make the whole batch fail).
+    var batch = [], bytes = 0;
+    while (queue.length) {
+        var sz = MAX_STR;
+        try { sz = JSON.stringify(queue[0]).length; } catch (e) {}
+        if (batch.length && bytes + sz > MAX_BEACON_BYTES) { break; }
+        batch.push(queue.shift());
+        bytes += sz;
+    }
+    if (!send(batch)) {
+        // Put the chunk back (bounded) so a later flush can retry.
+        queue = batch.concat(queue).slice(0, MAX_QUEUE);
+    }
+    if (queue.length) { schedule(); } // drain the rest on the next tick
 }
 
 function argsToMessage(args){
