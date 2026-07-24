@@ -16,14 +16,23 @@ namespace Aashan\PimcoreMcpBundle\Frontend;
 final class CollectorScript
 {
     /**
+     * @param string      $ingestPath Endpoint the collector POSTs reports to.
+     * @param string|null $nonce      CSP nonce to stamp on the <script> tag. Pass
+     *                                the page's script-src nonce when the response
+     *                                enforces a Content-Security-Policy, otherwise
+     *                                the browser blocks this inline script.
+     *
      * @return string A complete <script>…</script> block, endpoint pre-filled.
      */
-    public static function html(string $ingestPath): string
+    public static function html(string $ingestPath, ?string $nonce = null): string
     {
         $endpoint = json_encode($ingestPath, \JSON_UNESCAPED_SLASHES);
         $js = self::body();
+        $nonceAttr = $nonce !== null && $nonce !== ''
+            ? ' nonce="' . htmlspecialchars($nonce, \ENT_QUOTES) . '"'
+            : '';
 
-        return "<script data-pimcore-mcp-client-errors>(function(){var __ENDPOINT__={$endpoint};{$js}})();</script>";
+        return "<script data-pimcore-mcp-client-errors{$nonceAttr}>(function(){var __ENDPOINT__={$endpoint};{$js}})();</script>";
     }
 
     private static function body(): string

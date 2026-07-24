@@ -66,8 +66,36 @@ final class ClientErrorScriptInjector
             return;
         }
 
-        $script = CollectorScript::html(ClientErrorIngestListener::INGEST_PATH);
+        $script = CollectorScript::html(ClientErrorIngestListener::INGEST_PATH, $this->cspScriptNonce($response));
         $response->setContent(substr($content, 0, $pos) . $script . substr($content, $pos));
+    }
+
+    /**
+     * Extracts the script-src nonce from the response's enforcing CSP, if any.
+     *
+     * When a page enforces a Content-Security-Policy that lists a nonce in
+     * script-src (the Pimcore admin does, per request), 'unsafe-inline' is
+     * ignored and any inline <script> without a matching nonce is blocked. We
+     * reuse the page's own nonce so the collector is allowed to run. Only the
+     * enforcing header is consulted — a report-only policy blocks nothing.
+     */
+    private function cspScriptNonce(Response $response): ?string
+    {
+        $csp = (string) $response->headers->get('Content-Security-Policy', '');
+        if ($csp === '') {
+            return null;
+        }
+
+        foreach (explode(';', $csp) as $directive) {
+            if (stripos(ltrim($directive), 'script-src') !== 0) {
+                continue;
+            }
+            if (preg_match("/'nonce-([A-Za-z0-9+\/=_-]+)'/", $directive, $m) === 1) {
+                return $m[1];
+            }
+        }
+
+        return null;
     }
 
     /**
