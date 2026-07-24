@@ -16,6 +16,11 @@ services:
         arguments:
             $logDir: '%kernel.logs_dir%'
 
+    # The frontend-error store writes/reads its JSONL file in the log directory.
+    Aashan\PimcoreMcpBundle\Frontend\ClientErrorStore:
+        arguments:
+            $logDir: '%kernel.logs_dir%'
+
     # The areabrick generator writes into the project directory.
     Aashan\PimcoreMcpBundle\Generator\AreabrickGenerator:
         arguments:
@@ -41,6 +46,7 @@ services:
                 Aashan\PimcoreMcpBundle\Tool\LogTool: '@Aashan\PimcoreMcpBundle\Tool\LogTool'
                 Aashan\PimcoreMcpBundle\Tool\SystemInfoTool: '@Aashan\PimcoreMcpBundle\Tool\SystemInfoTool'
                 Aashan\PimcoreMcpBundle\Tool\ContainerTool: '@Aashan\PimcoreMcpBundle\Tool\ContainerTool'
+                Aashan\PimcoreMcpBundle\Tool\FrontendErrorTool: '@Aashan\PimcoreMcpBundle\Tool\FrontendErrorTool'
                 Aashan\PimcoreMcpBundle\Tool\TranslationTool: '@Aashan\PimcoreMcpBundle\Tool\TranslationTool'
                 Aashan\PimcoreMcpBundle\Tool\AreabrickTool: '@Aashan\PimcoreMcpBundle\Tool\AreabrickTool'
                 Aashan\PimcoreMcpBundle\Tool\QueryTool: '@Aashan\PimcoreMcpBundle\Tool\QueryTool'

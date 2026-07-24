@@ -81,6 +81,9 @@ running inside the Pimcore container:
 | `get_element` | Inspect one document/asset/data object (metadata + content). |
 | `list_document_types` / `create_document_type` / `update_document_type` / `delete_document_type` | Manage predefined document types. |
 | `list_predefined_properties` / `create_predefined_property` / `update_predefined_property` / `delete_predefined_property` | Manage predefined properties. |
+| `get_frontend_errors` | Read browser-captured JS errors / rejections / console.error+warn from the running site. |
+| `frontend_error_stats` | Counts of stored browser errors/warnings by type and surface. |
+| `clear_frontend_errors` | Delete all stored browser errors/warnings (reset before reproducing). |
 | `list_log_files` | List the Monolog log files in the log directory. |
 | `list_log_channels` | List the Monolog channels present in the log files. |
 | `get_log_entries` | Return the last N log entries, filtered by channel / minimum level. |
@@ -264,6 +267,46 @@ touched. The dump only exists when the kernel runs in **debug mode**
   `public`/`shared`/`abstract`/`lazy`/`synthetic`/`deprecated`/`autowired`
   flags, `factory`, `tags` (with their attributes), `methodCalls` and `aliases`.
 
+### Frontend (browser) errors
+
+`get_frontend_errors`, `frontend_error_stats` and `clear_frontend_errors` let an
+agent see what went wrong **in the browser** — the half of a Pimcore project the
+server-side logs never see. A tiny collector script, **auto-injected into HTML
+pages in debug mode**, captures uncaught JS errors (`window.onerror`),
+unhandled promise rejections and `console.error` / `console.warn`, batches them
+and ships them (via `sendBeacon`, falling back to `fetch` keepalive) to an
+ingest endpoint. The reports are stored as JSON Lines in the log directory
+(`frontend-errors.jsonl`, rotated at 5 MB) — **no database required**.
+
+The whole path is **zero-config and debug-only**:
+
+- A high-priority `kernel.request` listener owns the fixed path
+  `/_pimcore-mcp/client-errors`, short-circuiting it **before routing and the
+  security firewall** — so there is no route to register and no authentication
+  to satisfy. Outside debug mode the path is not handled at all, so the
+  collector effectively does not exist in production.
+- A `kernel.response` listener appends the collector `<script>` just before
+  `</body>` for full HTML documents on the main request — covering **both the
+  public website and the Pimcore admin**. JSON/XHR responses, redirects,
+  downloads, streamed responses and the ingest endpoint itself are left
+  untouched, and double injection is guarded.
+
+Each stored report carries `type` (`error` / `unhandledrejection` /
+`console.error` / `console.warn`), `message`, `stack`, `source`, `line`/`col`,
+the page `url`, a derived `surface` (`website` or `admin`), the server-observed
+`ua`/`ip` and both client and server timestamps. Free-text fields are clipped
+and each beacon is capped (≤ 64 KB, ≤ 50 reports) so the store cannot be
+flooded.
+
+- `get_frontend_errors(limit?, type?, surface?, sinceMs?)` — recent reports
+  (newest last), filterable by kind, by surface and by server timestamp.
+- `frontend_error_stats()` — total plus counts grouped by type and surface.
+- `clear_frontend_errors()` — reset the store; call it before reproducing an
+  issue so only the fresh reports come back.
+
+Typical loop: `clear_frontend_errors` → reproduce in the browser →
+`get_frontend_errors` to read the stack traces the change produced.
+
 ### System info & translations
 
 - `system_info` returns Pimcore & PHP versions, environment/debug, valid
@@ -358,6 +401,8 @@ src/
   Tool/                           MCP tools (#[McpTool] methods)
   Documentation/DocumentationFetcher  Fetches & parses docs.pimcore.com (version-aware)
   Container/ServiceCatalog        DB-free introspection of the debug service-container dump
+  Frontend/                       Browser-error collector script + JSONL store
+  EventListener/                  Ingest (kernel.request) + script injection (kernel.response)
   Repository/                     DB-free access to Pimcore definitions
   Extractor/DefinitionExtractor   Pimcore definitions -> compact DTOs
   Entity/Definitions/             The DTOs (ClassDefinition, ContainerDefinition, FieldDefinition)
