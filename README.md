@@ -285,11 +285,16 @@ The whole path is **zero-config and debug-only**:
   security firewall** — so there is no route to register and no authentication
   to satisfy. Outside debug mode the path is not handled at all, so the
   collector effectively does not exist in production.
-- A `kernel.response` listener appends the collector `<script>` just before
-  `</body>` for full HTML documents on the main request — covering **both the
-  public website and the Pimcore admin**. JSON/XHR responses, redirects,
-  downloads, streamed responses and the ingest endpoint itself are left
-  untouched, and double injection is guarded.
+- A `kernel.response` listener inserts the collector `<script>` as the **first
+  thing inside `<head>`** for full HTML documents on the main request —
+  covering **both the public website and the Pimcore admin**. It must run
+  before any other script: `window.onerror`, the `error` event and the
+  `console.error`/`warn` wrappers only capture what happens *after* they are
+  installed, so an inline classic script at the top of `<head>` (which executes
+  before module/deferred scripts) is what makes the page's own head/body
+  scripts observable. JSON/XHR responses, redirects, downloads, streamed
+  responses and the ingest endpoint itself are left untouched, and double
+  injection is guarded.
 
 Each stored report carries `type` (`error` / `unhandledrejection` /
 `console.error` / `console.warn`), `message`, `stack`, `source`, `line`/`col`,

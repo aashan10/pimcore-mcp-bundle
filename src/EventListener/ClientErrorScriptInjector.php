@@ -14,11 +14,20 @@ use Symfony\Component\HttpKernel\KernelInterface;
 /**
  * Auto-injects the browser collector script into HTML responses (debug only).
  *
- * The script is appended just before </body> for full HTML documents on the
- * main request, so both the public website and the Pimcore admin pick it up
- * with zero configuration. Everything else — JSON/XHR responses, redirects,
- * streamed/attachment responses, the ingest endpoint itself — is left
- * untouched, and it never runs outside debug mode.
+ * The script is inserted as the FIRST thing inside <head> (immediately after
+ * the opening tag) for full HTML documents on the main request, so both the
+ * public website and the Pimcore admin pick it up with zero configuration.
+ *
+ * Placement matters: window.onerror / the 'error' event and the console.error
+ * / console.warn wrappers only capture what happens AFTER they are installed.
+ * The collector must therefore run before any other script on the page — being
+ * an inline classic <script> at the top of <head> guarantees it executes first
+ * (module and deferred scripts run later by definition). Injecting near </body>
+ * would miss every error thrown by the page's own head/body scripts.
+ *
+ * Everything else — JSON/XHR responses, redirects, streamed/attachment
+ * responses, the ingest endpoint itself — is left untouched, and it never runs
+ * outside debug mode.
  */
 #[AsEventListener(event: KernelEvents::RESPONSE, method: 'onResponse', priority: -1024)]
 final class ClientErrorScriptInjector
@@ -44,7 +53,7 @@ final class ClientErrorScriptInjector
         }
 
         $content = $response->getContent();
-        if ($content === false || stripos($content, '</body>') === false) {
+        if ($content === false) {
             return;
         }
         // Guard against double injection (e.g. nested renders).
@@ -52,10 +61,34 @@ final class ClientErrorScriptInjector
             return;
         }
 
+        $pos = $this->insertionOffset($content);
+        if ($pos === null) {
+            return;
+        }
+
         $script = CollectorScript::html(ClientErrorIngestListener::INGEST_PATH);
-        // Insert before the last </body> so the script is the last thing parsed.
-        $pos = strripos($content, '</body>');
         $response->setContent(substr($content, 0, $pos) . $script . substr($content, $pos));
+    }
+
+    /**
+     * Byte offset at which to insert the script, chosen so it runs before any
+     * other script on the page: right after the opening <head> tag, else right
+     * after <html>, else right after <body> as a last resort. Null when the
+     * body has no recognisable HTML structure to place into.
+     *
+     * Charset note: Symfony sends the charset in the Content-Type header, which
+     * the browser honours over a <meta charset> — so placing the script ahead
+     * of a <meta charset> does not affect encoding detection.
+     */
+    private function insertionOffset(string $content): ?int
+    {
+        foreach (['/<head\b[^>]*>/i', '/<html\b[^>]*>/i', '/<body\b[^>]*>/i'] as $pattern) {
+            if (preg_match($pattern, $content, $m, \PREG_OFFSET_CAPTURE) === 1) {
+                return $m[0][1] + \strlen($m[0][0]);
+            }
+        }
+
+        return null;
     }
 
     private function isInjectableHtml(Response $response): bool
