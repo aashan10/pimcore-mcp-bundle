@@ -1,0 +1,49 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    # Auto-register repositories, the extractor and the tools as services.
+    Aashan\PimcoreMcpBundle\:
+        resource: '../src/'
+        exclude:
+            - '../src/Entity/'
+            - '../src/DependencyInjection/'
+            - '../src/PimcoreMcpBundle.php'
+
+    # The log reader needs the configured log directory.
+    Aashan\PimcoreMcpBundle\Log\LogReader:
+        arguments:
+            $logDir: '%kernel.logs_dir%'
+
+    # The areabrick generator writes into the project directory.
+    Aashan\PimcoreMcpBundle\Generator\AreabrickGenerator:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # The maintenance runner shells out to bin/console in the project directory.
+    Aashan\PimcoreMcpBundle\Maintenance\MaintenanceRunner:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # The stdio server command. The MCP SDK resolves tool handlers through a
+    # PSR-11 locator, so we hand it one keyed by the tool FQCNs it discovers.
+    Aashan\PimcoreMcpBundle\Command\McpServerCommand:
+        arguments:
+            $toolLocator: !service_locator
+                Aashan\PimcoreMcpBundle\Tool\DataObjectSchemaTool: '@Aashan\PimcoreMcpBundle\Tool\DataObjectSchemaTool'
+                Aashan\PimcoreMcpBundle\Tool\FieldContainerSchemaTool: '@Aashan\PimcoreMcpBundle\Tool\FieldContainerSchemaTool'
+                Aashan\PimcoreMcpBundle\Tool\PhpApiTool: '@Aashan\PimcoreMcpBundle\Tool\PhpApiTool'
+                Aashan\PimcoreMcpBundle\Tool\WebsiteSettingTool: '@Aashan\PimcoreMcpBundle\Tool\WebsiteSettingTool'
+                Aashan\PimcoreMcpBundle\Tool\DefinitionMutationTool: '@Aashan\PimcoreMcpBundle\Tool\DefinitionMutationTool'
+                Aashan\PimcoreMcpBundle\Tool\ElementInspectionTool: '@Aashan\PimcoreMcpBundle\Tool\ElementInspectionTool'
+                Aashan\PimcoreMcpBundle\Tool\PredefinedConfigTool: '@Aashan\PimcoreMcpBundle\Tool\PredefinedConfigTool'
+                Aashan\PimcoreMcpBundle\Tool\LogTool: '@Aashan\PimcoreMcpBundle\Tool\LogTool'
+                Aashan\PimcoreMcpBundle\Tool\SystemInfoTool: '@Aashan\PimcoreMcpBundle\Tool\SystemInfoTool'
+                Aashan\PimcoreMcpBundle\Tool\ContainerTool: '@Aashan\PimcoreMcpBundle\Tool\ContainerTool'
+                Aashan\PimcoreMcpBundle\Tool\TranslationTool: '@Aashan\PimcoreMcpBundle\Tool\TranslationTool'
+                Aashan\PimcoreMcpBundle\Tool\AreabrickTool: '@Aashan\PimcoreMcpBundle\Tool\AreabrickTool'
+                Aashan\PimcoreMcpBundle\Tool\QueryTool: '@Aashan\PimcoreMcpBundle\Tool\QueryTool'
+                Aashan\PimcoreMcpBundle\Tool\MaintenanceTool: '@Aashan\PimcoreMcpBundle\Tool\MaintenanceTool'
+                Aashan\PimcoreMcpBundle\Tool\DocumentationTool: '@Aashan\PimcoreMcpBundle\Tool\DocumentationTool'
+            $logger: '@?logger'
